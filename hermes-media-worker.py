@@ -67,11 +67,13 @@ def perform(body):
                     raise ValueError('Image dimensions too large')
                 image.verify()
             path = folder / (hashlib.sha256(raw).hexdigest() + '.' + match[1])
-            if not path.exists():
+            if not path.exists() or hashlib.sha256(path.read_bytes()).hexdigest() != hashlib.sha256(raw).hexdigest():
                 if sum(p.stat().st_size for p in folder.iterdir()) > 256 * 1024 * 1024:
                     raise ValueError('Image cache is full')
-                path.write_bytes(raw)
-                path.chmod(0o600)
+                temporary = path.with_suffix('.' + str(os.getpid()) + '.tmp')
+                temporary.write_bytes(raw)
+                temporary.chmod(0o600)
+                temporary.replace(path)
             paths.append(str(path))
         return {'paths': paths}
     if action == 'transcribe':

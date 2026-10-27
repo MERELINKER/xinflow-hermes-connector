@@ -111,6 +111,9 @@ class Handler(BaseHTTPRequestHandler):
                     parts = entries[0]['content']
                     images = [part.get('image_url', {}).get('url', '') for part in parts if part.get('type') == 'image_url']
                     if images:
+                        status, refused, mime = self.upstream('/v1/capabilities')
+                        if status != 200:
+                            return self.send(status, refused, mime)
                         scope = hashlib.sha256(self.headers.get('Authorization', '').encode()).hexdigest()
                         saved = worker({'action': 'prepare_images', 'scope': scope, 'images': images})
                         text = '\n'.join(part.get('text', '') for part in parts if part.get('type') == 'text')
