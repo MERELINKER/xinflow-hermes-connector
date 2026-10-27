@@ -42,6 +42,38 @@ def perform(body):
             return ''
         text = MEDIA_TAG_CLEANUP_RE.sub(replace, body.get('text', ''))
         return {'text': text.strip(), 'media': media}
+    if action == 'prepare_images':
+        import hashlib
+        import re
+        from PIL import Image
+        images = body.get('images')
+        if not isinstance(images, list) or not 1 <= len(images) <= 4:
+            raise ValueError('Invalid images')
+        folder = Path('/opt/data/attachments/xinflow-api') / body['scope']
+        if not re.fullmatch(r'[a-f0-9]{64}', body['scope']):
+            raise ValueError('Invalid image scope')
+        folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+        paths = []
+        for url in images:
+            match = re.fullmatch(r'data:image/(png|jpeg|webp|gif);base64,([A-Za-z0-9+/]+={0,2})', url)
+            if not match:
+                raise ValueError('Unsupported image type')
+            raw = base64.b64decode(match[2], validate=True)
+            if not raw or len(raw) > MAX_BYTES:
+                raise ValueError('Image exceeds 6 MB')
+            import io
+            with Image.open(io.BytesIO(raw)) as image:
+                if image.width * image.height > 25000000:
+                    raise ValueError('Image dimensions too large')
+                image.verify()
+            path = folder / (hashlib.sha256(raw).hexdigest() + '.' + match[1])
+            if not path.exists():
+                if sum(p.stat().st_size for p in folder.iterdir()) > 256 * 1024 * 1024:
+                    raise ValueError('Image cache is full')
+                path.write_bytes(raw)
+                path.chmod(0o600)
+            paths.append(str(path))
+        return {'paths': paths}
     if action == 'transcribe':
         import re
         match = re.fullmatch(r'data:(audio/(?:wav|x-wav|mpeg|mp3|mp4|m4a|x-m4a|ogg|webm|aac)|video/(?:mp4|webm));base64,([A-Za-z0-9+/]+={0,2})', body['dataUrl'])
